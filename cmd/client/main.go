@@ -2,8 +2,7 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
+	"log"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -22,29 +21,99 @@ func main() {
 	defer conn.Close()
 	fmt.Println("Successfully connecting to the RabbitMQ Server")
 
+	channel, err := conn.Channel()
+	if err != nil {
+		fmt.Printf("Something went wrong: %v\n", err)
+		return
+	}
+	defer channel.Close()
+	fmt.Println("Successfully connecting to the channel")
+
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
 		fmt.Printf("Something went wrong: %v\n", err)
 		return
 	}
 
-	_, _, err = pubsub.DeclareAndBind(
-		conn,
-		"peril_direct",
-		routing.PauseKey + "." + username,
-		routing.PauseKey,
-		pubsub.Transient,
-	)
 	if err != nil {
 		fmt.Printf("Something went wrong: %v\n", err)
 		return
 	}
 
-	signChan := make(chan os.Signal, 1)
-	signal.Notify(signChan, os.Interrupt)
-	<-signChan
-	fmt.Println()
-	fmt.Println("RabbitMQ Client connection close")
+	game_state := gamelogic.NewGameState(username)
+
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilDirect,
+		routing.PauseKey + "." + username,
+		routing.PauseKey,
+		pubsub.Transient,
+		handlerPause(game_state),
+	)
+	if err != nil {
+		fmt.Printf("Something went wrong: %v", err)
+		return
+	}
+
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.ArmyMovesPrefix + "." + username,
+		routing.ArmyMovesPrefix + ".*",
+		pubsub.Transient,
+		handlerMove(game_state),
+	)
+	if err != nil {
+		fmt.Printf("Something went wrong: %v", err)
+		return
+	}
+
+	for {
+		command := gamelogic.GetInput()
+		if len(command) == 0 {
+			continue
+		}
+
+		switch command[0] {
+		case "spawn":
+			if err := game_state.CommandSpawn(command); err != nil {
+				log.Printf("Failed to spawn unit: %v", err)
+				continue
+			}
+		case "move":
+			move, err := game_state.CommandMove(command)
+			if err != nil {
+				log.Printf("Failed to move unit: %v", err)
+				continue
+			}
+			fmt.Printf("Successfully moved unit to %v\n", move.ToLocation)
+			err = pubsub.PublishJSON(
+				channel, 
+				routing.ExchangePerilTopic, 
+				routing.ArmyMovesPrefix + "." + move.Player.Username, 
+				move,
+			)
+			if err != nil {
+				log.Printf("Failed to publish move: %v", err)
+				continue
+			}
+			fmt.Printf("Player %v has moved it's army to %v", move.Player.Username, move.ToLocation)
+
+		case "status":
+			game_state.CommandStatus()
+		case "help":
+			gamelogic.PrintClientHelp()
+		case "spam":
+			fmt.Println("Spamming not allowed yet!")
+		case "quit":
+			gamelogic.PrintQuit()
+			return
+		default:
+			fmt.Println("Unknown command")
+		}
+
+
+	}
 
 
 }

@@ -2,9 +2,8 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/signal"
 
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -27,23 +26,66 @@ func main() {
 		return
 	}
 
-	err = pubsub.PublishJSON(
-		channel, 
-		routing.ExchangePerilDirect, 
-		routing.PauseKey,
-		routing.PlayingState{
-			IsPaused: true,
-		},
+	_, _, err = pubsub.DeclareAndBind(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug,
+		routing.GameLogSlug + ".*",
+		pubsub.Durable,
 	)
 	if err != nil {
 		fmt.Printf("Something went wrong: %v\n", err)
 		return
 	}
 
-	signChan := make(chan os.Signal, 1)
-	signal.Notify(signChan, os.Interrupt)
-	<-signChan
-	fmt.Println()
-	fmt.Println("RabbitMQ Server connection close")
+	gamelogic.PrintServerHelp()
+
+	for {
+		command := gamelogic.GetInput()
+		if len(command) == 0 {
+			continue
+		}
+
+		switch command[0] {
+		case "pause":
+			fmt.Println("Game is paused")
+			err = pubsub.PublishJSON(
+				channel, 
+				routing.ExchangePerilDirect, 
+				routing.PauseKey,
+				routing.PlayingState{
+					IsPaused: true,
+				},
+			)
+			if err != nil {
+				fmt.Printf("Something went wrong when pausing the game: %v\n", err)
+				return
+			}
+		case "resume":
+			fmt.Println("Game resumed")
+			err = pubsub.PublishJSON(
+				channel, 
+				routing.ExchangePerilDirect, 
+				routing.PauseKey,
+				routing.PlayingState{
+					IsPaused: false,
+				},
+			)
+			if err != nil {
+				fmt.Printf("Something went wrong when pausing the game: %v\n", err)
+				return
+			}
+		case "quit":
+			fmt.Println("Exitting the game")
+			return
+
+		default:
+			fmt.Println("Usage : ")
+			gamelogic.PrintServerHelp()
+			continue
+		}
+	
+
+	}
 
 }
