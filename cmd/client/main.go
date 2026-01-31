@@ -57,7 +57,20 @@ func main() {
 		routing.ArmyMovesPrefix + "." + username,
 		routing.ArmyMovesPrefix + ".*",
 		pubsub.Transient,
-		handlerMove(game_state),
+		handlerMove(game_state, channel),
+	)
+	if err != nil {
+		fmt.Printf("Something went wrong: %v", err)
+		return
+	}
+
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.WarRecognitionsPrefix,
+		routing.WarRecognitionsPrefix + ".*",
+		pubsub.Durable,
+		handlerWar(game_state, channel),
 	)
 	if err != nil {
 		fmt.Printf("Something went wrong: %v", err)

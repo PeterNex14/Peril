@@ -38,6 +38,16 @@ func main() {
 		return
 	}
 
+	pubsub.SubscribeGob(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug,
+		routing.GameLogSlug + ".*",
+		pubsub.Durable,
+		handlerWriteLog(),
+	)
+	
+
 	gamelogic.PrintServerHelp()
 
 	for {
