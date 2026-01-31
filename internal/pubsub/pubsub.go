@@ -20,6 +20,15 @@ var queueTypeEnum = map[SimpleQueueType]string {
 	Transient: "transient",
 }
 
+type Acktype int
+
+const (
+	Ack Acktype = iota
+	NackRequeue
+	NackDiscard
+)
+
+
 
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	json_byte, err := json.Marshal(val)
@@ -63,7 +72,9 @@ func DeclareAndBind(
 		queueType == Transient,
 		queueType == Transient,
 		false,
-		nil,
+		amqp.Table{
+			"x-dead-letter-exchange": "peril_dlx",
+		},
 	)
 	if err != nil {
 		return &amqp.Channel{}, amqp.Queue{}, err
@@ -89,7 +100,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	queueType SimpleQueueType,
-	handler func(T),
+	handler func(T) Acktype,
 ) error {
 	channel, queue, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
@@ -110,8 +121,19 @@ func SubscribeJSON[T any](
 				log.Printf("Something went wrong: %v", err)
 				continue
 			} 
-			handler(temp)
-			deliv.Ack(false)
+
+			ack_type := handler(temp)
+			switch ack_type {
+			case Ack:
+				deliv.Ack(false)
+				log.Printf("Acknowledge Occured")
+			case NackRequeue:
+				deliv.Nack(false, true)
+				log.Printf("Negative Acknowledge and Requeue occured")
+			case NackDiscard:
+				deliv.Nack(false, false)
+				log.Printf("Negative Acknowledge and Discard occured")
+			}
 		}
 	}()
 

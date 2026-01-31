@@ -35,10 +35,6 @@ func main() {
 		return
 	}
 
-	if err != nil {
-		fmt.Printf("Something went wrong: %v\n", err)
-		return
-	}
 
 	game_state := gamelogic.NewGameState(username)
 
