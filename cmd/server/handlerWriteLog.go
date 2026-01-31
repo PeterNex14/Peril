@@ -15,7 +15,7 @@ func handlerWriteLog() func(routing.GameLog) pubsub.Acktype {
 		defer fmt.Print("> ")
 		err := gamelogic.WriteLog(gl)
 		if err != nil {
-			log.Print("Something went wrong when writing log: %v", err)
+			log.Printf("Something went wrong when writing log: %v", err)
 			return pubsub.NackRequeue
 		}
 		return pubsub.Ack

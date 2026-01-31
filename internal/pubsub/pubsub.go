@@ -107,6 +107,11 @@ func SubscribeJSON[T any](
 		return err
 	}
 
+	err = channel.Qos(10, 0, false)
+	if err != nil {
+		return err
+	}
+
 	delivery, err := channel.Consume(queue.Name, "", false, false, false, false, nil)
 	if err != nil {
 		return err
